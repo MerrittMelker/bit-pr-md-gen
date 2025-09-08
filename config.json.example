@@ -2,6 +2,8 @@
   "workspace": "your-workspace",
   "baseUrl": "https://api.bitbucket.org/2.0/repositories",
   "username": "your-username",
-  "appPassword": "your-app-password"
+  "appPassword": "your-app-password",
+  "RepoSlug": "your-repo-slig", // optional
+    "PRNumber": 123, // optional
 }
 

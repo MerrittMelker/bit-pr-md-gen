@@ -1,8 +1,5 @@
 param (
-    [Parameter(Mandatory = $true)]
     [string]$RepoSlug,
-
-    [Parameter(Mandatory = $true)]
     [int]$PRNumber
 )
 
@@ -16,25 +13,53 @@ $config = Get-Content $configPath | ConvertFrom-Json
 $workspace   = $config.workspace
 $baseUrl     = $config.baseUrl
 $username    = $config.username
-$appPassword = $config.appPassword
+$apiToken    = $config.apiToken           # <-- NEW: API token replaces appPassword
+
+# Load from config if not provided
+if (-not $RepoSlug) { $RepoSlug = $config.repoSlug }
+if (-not $PRNumber) { $PRNumber = $config.prNumber }
+
+if (-not $RepoSlug -or -not $PRNumber) {
+    Write-Error "Repository slug and PR number must be provided either as parameters or in config.json."
+    exit 1
+}
+
+# --- Build headers (manual Basic Auth for PS 5.1 compatibility) ---
+$pair   = $username + ":" + $apiToken
+$bytes  = [System.Text.Encoding]::ASCII.GetBytes($pair)
+$base64 = [Convert]::ToBase64String($bytes)
+$headersJson = @{
+    "Accept"        = "application/json"
+    "Authorization" = "Basic $base64"
+}
+$headersText = @{
+# For endpoints that return text (diff), we still send auth
+    "Authorization" = "Basic $base64"
+}
+
+# --- Validate credentials ---
+$testUrl = "https://api.bitbucket.org/2.0/user"
+try {
+    $testResponse = Invoke-RestMethod -Method GET -Uri $testUrl -Headers $headersJson -ErrorAction Stop
+    Write-Host "Authenticated as $($testResponse.display_name)"
+} catch {
+    Write-Error "Bitbucket authentication failed. Check username/app password. $($_.Exception.Message)"
+    exit 1
+}
 
 # Output file
 $outFile = "PR-$RepoSlug-$PRNumber.md"
-
 Write-Host "Fetching PR #$PRNumber from $RepoSlug..."
-
-# Build credentials
-$secPass   = ConvertTo-SecureString $appPassword -AsPlainText -Force
-$cred      = New-Object PSCredential ($username, $secPass)
 
 # --- Fetch PR metadata ---
 $prUrl      = "$baseUrl/$workspace/$RepoSlug/pullrequests/$PRNumber"
-$prResponse = Invoke-RestMethod -Uri $prUrl -Authentication Basic -Credential $cred
+$prResponse = Invoke-RestMethod -Method GET -Uri $prUrl -Headers $headersJson -ErrorAction Stop
 
 # --- Fetch PR diff ---
 $diffUrl = "$prUrl/diff"
 $diffTempFile = "$outFile.diff"
-Invoke-RestMethod -Uri $diffUrl -Authentication Basic -Credential $cred -Method Get -OutFile $diffTempFile
+Invoke-RestMethod -Method GET -Uri $diffUrl -Headers $headersText -OutFile $diffTempFile -ErrorAction Stop
+
 $diffContent = Get-Content $diffTempFile -Raw
 Remove-Item $diffTempFile
 
@@ -43,7 +68,7 @@ $commentsUrl = "$prUrl/comments"
 $comments    = @()
 $nextUrl     = $commentsUrl
 while ($nextUrl) {
-    $resp     = Invoke-RestMethod -Uri $nextUrl -Authentication Basic -Credential $cred
+    $resp     = Invoke-RestMethod -Method GET -Uri $nextUrl -Headers $headersJson -ErrorAction Stop
     $comments += $resp.values
     $nextUrl  = $resp.next
 }
@@ -57,7 +82,8 @@ $commentSection = if ($comments.Count -gt 0) {
         if ($_.inline) {
             $file   = $_.inline.path
             $line   = $_.inline.toString
-            "### [$author @ $created] ($file:$line)`n$content`n"
+            "### [$author @ $created] (${file}:${line})`n$content`n"
+            
         } else {
             "### [$author @ $created]`n$content`n"
         }
