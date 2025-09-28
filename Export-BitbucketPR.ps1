@@ -12,8 +12,8 @@ if (-not (Test-Path $configPath)) {
 $config = Get-Content $configPath | ConvertFrom-Json
 $workspace   = $config.workspace
 $baseUrl     = $config.baseUrl
-$username    = $config.username
-$apiToken    = $config.apiToken           # <-- NEW: API token replaces appPassword
+$email    = $config.email
+$apiToken    = $config.appToken
 
 # Load from config if not provided
 if (-not $RepoSlug) { $RepoSlug = $config.repoSlug }
@@ -25,7 +25,7 @@ if (-not $RepoSlug -or -not $PRNumber) {
 }
 
 # --- Build headers (manual Basic Auth for PS 5.1 compatibility) ---
-$pair   = $username + ":" + $apiToken
+$pair   = $email + ":" + $apiToken
 $bytes  = [System.Text.Encoding]::ASCII.GetBytes($pair)
 $base64 = [Convert]::ToBase64String($bytes)
 $headersJson = @{
