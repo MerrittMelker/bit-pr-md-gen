@@ -58,10 +58,20 @@ $prResponse = Invoke-RestMethod -Method GET -Uri $prUrl -Headers $headersJson -E
 # --- Fetch PR diff ---
 $diffUrl = "$prUrl/diff"
 $diffTempFile = "$outFile.diff"
-Invoke-RestMethod -Method GET -Uri $diffUrl -Headers $headersText -OutFile $diffTempFile -ErrorAction Stop
-
-$diffContent = Get-Content $diffTempFile -Raw
-Remove-Item $diffTempFile
+Write-Host "Diff URL: $diffUrl"
+try {
+    Invoke-RestMethod -Method GET -Uri $diffUrl -Headers $headersJson -OutFile $diffTempFile -ErrorAction Stop
+    Write-Host "Diff fetched successfully."
+    $diffContent = Get-Content $diffTempFile -Raw
+    Remove-Item $diffTempFile
+} catch {
+    Write-Error "Failed to fetch diff. Response: $($_.Exception.Response | ConvertTo-Json)"
+    Write-Error "Exception: $($_.Exception.Message)"
+    if ($_.Exception.Response) {
+        Write-Error "StatusCode: $($_.Exception.Response.StatusCode)"
+    }
+    exit 1
+}
 
 # --- Fetch comments (paginated) ---
 $commentsUrl = "$prUrl/comments"
